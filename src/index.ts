@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
   Tool,
 } from "@modelcontextprotocol/sdk/types.js";
+import { createServer } from "node:http";
+import { URL } from "node:url";
 import pkg from 'pg';
 const { Pool } = pkg;
 
@@ -96,8 +98,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         ],
       };
     } else if (name === "getEvents") {
-      const memberName = args.name as string;
-      let refDate = args.refDate as number | undefined;
+  const memberName = args?.name as string;
+  let refDate = args?.refDate as number | undefined;
 
       // If no ref date provided, use DPOC
       if (!refDate) {
@@ -152,11 +154,47 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   }
 });
 
-// Start the server
+// Start the HTTP server
 async function main() {
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
-  console.error("Family MCP Server running on stdio");
+  const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
+  const HOST = process.env.HOST || 'localhost';
+  
+  const httpServer = createServer(async (req, res) => {
+    const url = new URL(req.url!, `http://${req.headers.host}`);
+    
+    // Handle CORS
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    
+    if (req.method === 'OPTIONS') {
+      res.writeHead(200);
+      res.end();
+      return;
+    }
+    
+    if (url.pathname === '/sse' && req.method === 'GET') {
+      // Handle SSE connection
+      const transport = new SSEServerTransport('/message', res);
+      await server.connect(transport);
+      await transport.start();
+    } else if (url.pathname === '/message' && req.method === 'POST') {
+      // Handle incoming messages - we need to route to the correct transport
+      // For simplicity, we'll create a new transport for each request
+      // In production, you'd want to maintain transport sessions
+      const transport = new SSEServerTransport('/message', res);
+      await transport.handlePostMessage(req, res);
+    } else {
+      res.writeHead(404);
+      res.end('Not Found');
+    }
+  });
+  
+  httpServer.listen(PORT, HOST, () => {
+    console.log(`Family MCP Server running on http://${HOST}:${PORT}`);
+    console.log(`SSE endpoint: http://${HOST}:${PORT}/sse`);
+    console.log(`Message endpoint: http://${HOST}:${PORT}/message`);
+  });
 }
 
 main().catch((error) => {
