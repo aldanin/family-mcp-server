@@ -52,7 +52,7 @@ const tools: Tool[] = [
   },
   {
     name: "getFamily",
-    description: "Return family members with their details (id, name, birthdate, role, father_name, mother_name, spouse_name). If `name` is provided, return matching member(s) (case-insensitive). Otherwise return all members.",
+    description: "Return family members with their details (id, name, birthdate, role, father, mother, spouse). If `name` is provided, return matching member(s) (case-insensitive). Otherwise return all members.",
     inputSchema: {
       type: "object",
       properties: {
@@ -169,14 +169,14 @@ function createMcpServer(): Server {
           // Case-insensitive match on name
           result = await pool.query(
             `
-            SELECT I want to say that's my
+            SELECT 
               m.id, 
               m.name, 
               m.birthdate, 
               m.role,
-              f.name AS father_name,
-              mo.name AS mother_name,
-              s.name AS spouse_name
+              f.name AS father,
+              mo.name AS mother,
+              s.name AS spouse
             FROM members m
             LEFT JOIN members f ON m.father_id = f.id
             LEFT JOIN members mo ON m.mother_id = mo.id
@@ -194,9 +194,9 @@ function createMcpServer(): Server {
               m.name, 
               m.birthdate, 
               m.role,
-              f.name AS father_name,
-              mo.name AS mother_name,
-              s.name AS spouse_name
+              f.name AS father,
+              mo.name AS mother,
+              s.name AS spouse
             FROM members m
             LEFT JOIN members f ON m.father_id = f.id
             LEFT JOIN members mo ON m.mother_id = mo.id
