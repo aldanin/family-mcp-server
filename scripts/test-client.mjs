@@ -14,7 +14,8 @@ function logSection(title) {
 
 function prettyPrint(label, value) {
   logSection(label);
-  console.log(typeof value === "string" ? value : JSON.stringify(value, null, 2));
+  console.log(value);
+//   console.log(typeof value === "string" ? value : JSON.stringify(value, null, 2));
 }
 
 const client = new Client(
@@ -44,6 +45,13 @@ async function main() {
     arguments: {},
   });
   prettyPrint("getDPOC result", dpocResult);
+
+   const getFamilyResult = await client.callTool({
+    name: "getFamily",
+    arguments: {},
+  });
+  prettyPrint("getFamily result", getFamilyResult);
+
 
   if (MEMBER_NAME) {
     const eventsResult = await client.callTool({

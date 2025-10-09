@@ -50,6 +50,29 @@ const tools: Tool[] = [
       required: ["name"],
     },
   },
+  {
+    name: "getFamily",
+    description: "Return family members with their details (id, name, birthdate, role, father_name, mother_name, spouse_name). If `name` is provided, return matching member(s) (case-insensitive). Otherwise return all members.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          description: "Optional member name to filter by (case-insensitive)",
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "getTableSchema",
+    description: "Get the column schema for the members table (temporary tool for debugging)",
+    inputSchema: {
+      type: "object",
+      properties: {},
+      required: [],
+    },
+  },
 ];
 
 // Helper function to get DPOC
@@ -98,7 +121,7 @@ function createMcpServer(): Server {
           ],
         };
       } else if (name === "getEvents") {
-        const memberName = args?.name as string;
+        const memberName = typeof args?.name === "string" ? args.name : "";
         let refDate = args?.refDate as number | undefined;
 
         // If no ref date provided, use DPOC
@@ -134,6 +157,84 @@ function createMcpServer(): Server {
                 refDate: refDate,
                 events: result.rows,
                 count: result.rows.length,
+              }, null, 2),
+            },
+          ],
+        };
+      } else if (name === "getFamily") {
+        const memberName = typeof args?.name === "string" ? args.name : undefined;
+
+        let result;
+        if (typeof memberName === "string" && memberName.trim() !== "") {
+          // Case-insensitive match on name
+          result = await pool.query(
+            `
+            SELECT I want to say that's my
+              m.id, 
+              m.name, 
+              m.birthdate, 
+              m.role,
+              f.name AS father_name,
+              mo.name AS mother_name,
+              s.name AS spouse_name
+            FROM members m
+            LEFT JOIN members f ON m.father_id = f.id
+            LEFT JOIN members mo ON m.mother_id = mo.id
+            LEFT JOIN members s ON m.spouse_id = s.id
+            WHERE LOWER(m.name) = LOWER($1)
+            ORDER BY m.name
+            `,
+            [memberName]
+          );
+        } else {
+          result = await pool.query(
+            `
+            SELECT 
+              m.id, 
+              m.name, 
+              m.birthdate, 
+              m.role,
+              f.name AS father_name,
+              mo.name AS mother_name,
+              s.name AS spouse_name
+            FROM members m
+            LEFT JOIN members f ON m.father_id = f.id
+            LEFT JOIN members mo ON m.mother_id = mo.id
+            LEFT JOIN members s ON m.spouse_id = s.id
+            ORDER BY m.name
+            `
+          );
+        }
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                name: memberName ?? null,
+                members: result.rows,
+                count: result.rows.length,
+              }, null, 2),
+            },
+          ],
+        };
+      } else if (name === "getTableSchema") {
+        const result = await pool.query(
+          `
+          SELECT column_name, data_type, is_nullable
+          FROM information_schema.columns
+          WHERE table_name = 'members'
+          ORDER BY ordinal_position
+          `
+        );
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                table: "members",
+                columns: result.rows,
               }, null, 2),
             },
           ],
