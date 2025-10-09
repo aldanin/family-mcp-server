@@ -24,8 +24,8 @@ const pool = new Pool({
 // Define the tools
 const tools: Tool[] = [
   {
-    name: "getDPOC",
-    description: "Get the EPOCH number of DPOC (the oldest birthdate in the members table)",
+    name: "getDPOCH",
+    description: "Get the EPOCH number of DPOCH (the oldest birthdate in the members table)",
     inputSchema: {
       type: "object",
       properties: {},
@@ -34,7 +34,7 @@ const tools: Tool[] = [
   },
   {
     name: "getEvents",
-    description: "Get events for a specific family member. If ref-date is provided, return events from that date onwards. Otherwise, return all events from DPOC.",
+    description: "Get events for a specific family member. If ref-date is provided, return events from that date onwards. Otherwise, return all events from DPOCH.",
     inputSchema: {
       type: "object",
       properties: {
@@ -44,7 +44,7 @@ const tools: Tool[] = [
         },
         refDate: {
           type: "number",
-          description: "Optional reference date as EPOCH number. If not provided, uses DPOC",
+          description: "Optional reference date as EPOCH number. If not provided, uses DPOCH",
         },
       },
       required: ["name"],
@@ -52,7 +52,7 @@ const tools: Tool[] = [
   },
   {
     name: "getFamily",
-    description: "Return family members with their details (id, name, birthdate, role, father, mother, spouse). If `name` is provided, return matching member(s) (case-insensitive). Otherwise return all members.",
+    description: "Return family members with their details (id, name, birthdate, role, father, mother, spouse, occupation). The occupation field is an array where the last item is the current occupation. If `name` is provided, return matching member(s) (case-insensitive). Otherwise return all members.",
     inputSchema: {
       type: "object",
       properties: {
@@ -75,13 +75,13 @@ const tools: Tool[] = [
   },
 ];
 
-// Helper function to get DPOC
-async function getDPOCValue(): Promise<number> {
+// Helper function to get DPOCH
+async function getDPOCHValue(): Promise<number> {
   const result = await pool.query(`
-    SELECT EXTRACT(EPOCH FROM MIN(birthdate))::bigint AS dpoc
+    SELECT EXTRACT(EPOCH FROM MIN(birthdate))::bigint AS dpoch
     FROM members
   `);
-  return result.rows[0].dpoc;
+  return result.rows[0].dpoch;
 }
 
 const sessions = new Map<string, { server: Server; transport: SSEServerTransport }>();
@@ -107,14 +107,14 @@ function createMcpServer(): Server {
     const { name, arguments: args } = request.params;
 
     try {
-      if (name === "getDPOC") {
-        const dpoc = await getDPOCValue();
+      if (name === "getDPOCH") {
+        const dpoch = await getDPOCHValue();
         return {
           content: [
             {
               type: "text",
               text: JSON.stringify({
-                dpoc: dpoc,
+                dpoch: dpoch,
                 description: "EPOCH timestamp of the oldest birthdate in the members table",
               }, null, 2),
             },
@@ -124,9 +124,9 @@ function createMcpServer(): Server {
         const memberName = typeof args?.name === "string" ? args.name : "";
         let refDate = args?.refDate as number | undefined;
 
-        // If no ref date provided, use DPOC
+        // If no ref date provided, use DPOCH
         if (!refDate) {
-          refDate = await getDPOCValue();
+          refDate = await getDPOCHValue();
         }
 
         // Convert EPOCH to PostgreSQL timestamp
@@ -174,6 +174,7 @@ function createMcpServer(): Server {
               m.name, 
               m.birthdate, 
               m.role,
+              m.occupation,
               f.name AS father,
               mo.name AS mother,
               s.name AS spouse
@@ -194,6 +195,7 @@ function createMcpServer(): Server {
               m.name, 
               m.birthdate, 
               m.role,
+              m.occupation,
               f.name AS father,
               mo.name AS mother,
               s.name AS spouse
