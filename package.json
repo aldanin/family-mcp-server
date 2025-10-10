@@ -6,7 +6,8 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
-    "start": "node dist/index.js",
+    "run": "node dist/index.js",
+    "start": "npm run build && npm run run",
     "dev": "tsc --watch",
     "test:client": "node scripts/test-client.mjs",
     "migrate": "node scripts/migrate-add-occupation.mjs"
