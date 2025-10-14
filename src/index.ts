@@ -84,6 +84,149 @@ async function getDPOCHValue(): Promise<number> {
   return result.rows[0].dpoch;
 }
 
+// Tool handler methods
+async function handleGetDPOCH(args: any) {
+  const dpoch = await getDPOCHValue();
+  return {
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify({
+          dpoch: dpoch,
+          description: "EPOCH timestamp of the oldest birthdate in the members table",
+        }, null, 2),
+      },
+    ],
+  };
+}
+
+async function handleGetEvents(args: any) {
+  const memberName = typeof args?.name === "string" ? args.name : "";
+  let refDate = args?.refDate as number | undefined;
+
+  // If no ref date provided, use DPOCH
+  if (!refDate) {
+    refDate = await getDPOCHValue();
+  }
+
+  // Convert EPOCH to PostgreSQL timestamp
+  const refDateSQL = `to_timestamp(${refDate})`;
+
+  // Query events for the member
+  const result = await pool.query(
+    `
+    SELECT 
+      e.event_date,
+      e.event_type,
+      m.name,
+      EXTRACT(EPOCH FROM e.event_date)::bigint AS event_epoch
+    FROM events e
+    JOIN members m ON e.member_id = m.id
+    WHERE m.name = $1 AND e.event_date >= ${refDateSQL}
+    ORDER BY e.event_date
+    `,
+    [memberName]
+  );
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify({
+          name: memberName,
+          refDate: refDate,
+          events: result.rows,
+          count: result.rows.length,
+        }, null, 2),
+      },
+    ],
+  };
+}
+
+async function handleGetFamily(args: any) {
+  const memberName = typeof args?.name === "string" ? args.name : undefined;
+
+  let result;
+  if (typeof memberName === "string" && memberName.trim() !== "") {
+    // Case-insensitive match on name
+    result = await pool.query(
+      `
+      SELECT 
+        m.id, 
+        m.name, 
+        m.birthdate, 
+        m.role,
+        m.occupation,
+        f.name AS father,
+        mo.name AS mother,
+        s.name AS spouse
+      FROM members m
+      LEFT JOIN members f ON m.father_id = f.id
+      LEFT JOIN members mo ON m.mother_id = mo.id
+      LEFT JOIN members s ON m.spouse_id = s.id
+      WHERE LOWER(m.name) = LOWER($1)
+      ORDER BY m.name
+      `,
+      [memberName]
+    );
+  } else {
+    result = await pool.query(
+      `
+      SELECT 
+        m.id, 
+        m.name, 
+        m.birthdate, 
+        m.role,
+        m.occupation,
+        f.name AS father,
+        mo.name AS mother,
+        s.name AS spouse
+      FROM members m
+      LEFT JOIN members f ON m.father_id = f.id
+      LEFT JOIN members mo ON m.mother_id = mo.id
+      LEFT JOIN members s ON m.spouse_id = s.id
+      ORDER BY m.name
+      `
+    );
+  }
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify({
+          name: memberName ?? null,
+          members: result.rows,
+          count: result.rows.length,
+        }, null, 2),
+      },
+    ],
+  };
+}
+
+async function handleGetTableSchema(args: any) {
+  const result = await pool.query(
+    `
+    SELECT column_name, data_type, is_nullable
+    FROM information_schema.columns
+    WHERE table_name = 'members'
+    ORDER BY ordinal_position
+    `
+  );
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify({
+          table: "members",
+          columns: result.rows,
+        }, null, 2),
+      },
+    ],
+  };
+}
+
 const sessions = new Map<string, { server: Server; transport: SSEServerTransport }>();
 
 function createMcpServer(): Server {
@@ -107,142 +250,21 @@ function createMcpServer(): Server {
     const { name, arguments: args } = request.params;
 
     try {
-      if (name === "getDPOCH") {
-        const dpoch = await getDPOCHValue();
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify({
-                dpoch: dpoch,
-                description: "EPOCH timestamp of the oldest birthdate in the members table",
-              }, null, 2),
-            },
-          ],
-        };
-      } else if (name === "getEvents") {
-        const memberName = typeof args?.name === "string" ? args.name : "";
-        let refDate = args?.refDate as number | undefined;
-
-        // If no ref date provided, use DPOCH
-        if (!refDate) {
-          refDate = await getDPOCHValue();
-        }
-
-        // Convert EPOCH to PostgreSQL timestamp
-        const refDateSQL = `to_timestamp(${refDate})`;
-
-        // Query events for the member
-        const result = await pool.query(
-          `
-          SELECT 
-            e.event_date,
-            e.event_type,
-            m.name,
-            EXTRACT(EPOCH FROM e.event_date)::bigint AS event_epoch
-          FROM events e
-          JOIN members m ON e.member_id = m.id
-          WHERE m.name = $1 AND e.event_date >= ${refDateSQL}
-          ORDER BY e.event_date
-          `,
-          [memberName]
-        );
-
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify({
-                name: memberName,
-                refDate: refDate,
-                events: result.rows,
-                count: result.rows.length,
-              }, null, 2),
-            },
-          ],
-        };
-      } else if (name === "getFamily") {
-        const memberName = typeof args?.name === "string" ? args.name : undefined;
-
-        let result;
-        if (typeof memberName === "string" && memberName.trim() !== "") {
-          // Case-insensitive match on name
-          result = await pool.query(
-            `
-            SELECT 
-              m.id, 
-              m.name, 
-              m.birthdate, 
-              m.role,
-              m.occupation,
-              f.name AS father,
-              mo.name AS mother,
-              s.name AS spouse
-            FROM members m
-            LEFT JOIN members f ON m.father_id = f.id
-            LEFT JOIN members mo ON m.mother_id = mo.id
-            LEFT JOIN members s ON m.spouse_id = s.id
-            WHERE LOWER(m.name) = LOWER($1)
-            ORDER BY m.name
-            `,
-            [memberName]
-          );
-        } else {
-          result = await pool.query(
-            `
-            SELECT 
-              m.id, 
-              m.name, 
-              m.birthdate, 
-              m.role,
-              m.occupation,
-              f.name AS father,
-              mo.name AS mother,
-              s.name AS spouse
-            FROM members m
-            LEFT JOIN members f ON m.father_id = f.id
-            LEFT JOIN members mo ON m.mother_id = mo.id
-            LEFT JOIN members s ON m.spouse_id = s.id
-            ORDER BY m.name
-            `
-          );
-        }
-
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify({
-                name: memberName ?? null,
-                members: result.rows,
-                count: result.rows.length,
-              }, null, 2),
-            },
-          ],
-        };
-      } else if (name === "getTableSchema") {
-        const result = await pool.query(
-          `
-          SELECT column_name, data_type, is_nullable
-          FROM information_schema.columns
-          WHERE table_name = 'members'
-          ORDER BY ordinal_position
-          `
-        );
-
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify({
-                table: "members",
-                columns: result.rows,
-              }, null, 2),
-            },
-          ],
-        };
-      } else {
-        throw new Error(`Unknown tool: ${name}`);
+      switch (name) {
+        case "getDPOCH":
+          return await handleGetDPOCH(args);
+        
+        case "getEvents":
+          return await handleGetEvents(args);
+        
+        case "getFamily":
+          return await handleGetFamily(args);
+        
+        case "getTableSchema":
+          return await handleGetTableSchema(args);
+        
+        default:
+          throw new Error(`Unknown tool: ${name}`);
       }
     } catch (error) {
       return {

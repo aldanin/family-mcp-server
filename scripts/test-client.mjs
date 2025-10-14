@@ -40,11 +40,11 @@ async function main() {
   const tools = await client.listTools();
   prettyPrint("Available tools", tools);
 
-  const dpocResult = await client.callTool({
-    name: "getDPOC",
+  const dpochResult = await client.callTool({
+    name: "getDPOCH",
     arguments: {},
   });
-  prettyPrint("getDPOC result", dpocResult);
+  prettyPrint("getDPOCH result", dpochResult);
 
    const getFamilyResult = await client.callTool({
     name: "getFamily",
